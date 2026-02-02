@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SVG Font Embed Generator</title>
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        margin: 40px;
+        max-width: 900px;
+    }
+    textarea {
+        width: 100%;
+        height: 200px;
+        font-family: monospace;
+        font-size: 14px;
+    }
+    input, select, button {
+        padding: 8px;
+        font-size: 14px;
+        margin: 6px 0;
+    }
+</style>
+</head>
+<body>
+
+<h2>SVG Font Embed Generator</h2>
+
+<p>Select a Google Font, type one manually, provide a custom font URL, or upload a local font file.  
+The tool will fetch or read the font, convert it to Base64, and generate the SVG‑ready &lt;style&gt; block.</p>
+
+<h3>1. Choose a Google Font (optional)</h3>
+<select id="googleFontSelect">
+    <option value="">— Select Google Font —</option>
+    <option value="Roboto">Roboto</option>
+    <option value="Open Sans">Open Sans</option>
+    <option value="Lato">Lato</option>
+    <option value="Montserrat">Montserrat</option>
+    <option value="Poppins">Poppins</option>
+    <option value="Inter">Inter</option>
+</select>
+
+<h3>OR type any Google Font name</h3>
+<input id="googleFontTyped" type="text" placeholder="e.g. Nunito Sans, Merriweather, Fira Code" style="width:100%;">
+
+<h3>OR enter a custom font URL</h3>
+<input id="customFontUrl" type="text" placeholder="https://example.com/font.woff2" style="width:100%;">
+
+<h3>OR upload a local font file</h3>
+<input id="localFontFile" type="file" accept=".woff,.woff2,.ttf,.otf">
+
+<button id="generateBtn">Generate SVG Font Embed Code</button>
+
+<h3>Generated SVG &lt;style&gt; block</h3>
+<textarea id="output" readonly></textarea>
+
+<script>
+function extractBase64(dataUrl) {
+    // Strip any "data:...;base64," prefix
+    return dataUrl.replace(/^data:.*;base64,/, "");
+}
+
+async function fetchAsBase64(url) {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(extractBase64(reader.result));
+        reader.readAsDataURL(blob);
+    });
+}
+
+async function fileToBase64(file) {
+    return new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(extractBase64(reader.result));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function getGoogleFontURL(fontName) {
+    const api = `https://fonts.googleapis.com/css2?family=${fontName.replace(/ /g, '+')}&display=swap`;
+    try {
+        const res = await fetch(api);
+        if (!res.ok) throw new Error("Font CSS fetch failed");
+        const css = await res.text();
+        const match = css.match(/url\((https:[^)]+)\)/);
+        return match ? match[1] : null;
+    } catch (err) {
+        console.error("Google Font fetch error:", err);
+        return null;
+    }
+}
+
+document.getElementById("generateBtn").onclick = async () => {
+    const googleFontSelect = document.getElementById("googleFontSelect").value;
+    const googleFontTyped = document.getElementById("googleFontTyped").value.trim();
+    const customUrl = document.getElementById("customFontUrl").value.trim();
+    const localFile = document.getElementById("localFontFile").files[0];
+    const output = document.getElementById("output");
+
+    let fontUrl = "";
+    let fontName = "";
+    let base64 = "";
+    let ext = "";
+
+    if (localFile) {
+        fontName = localFile.name.split(".")[0];
+        ext = localFile.name.split(".").pop().toLowerCase();
+        base64 = await fileToBase64(localFile);
+    } else if (googleFontTyped) {
+        fontName = googleFontTyped;
+        fontUrl = await getGoogleFontURL(fontName);
+        if (!fontUrl) {
+            output.value = "Could not fetch Google Font URL for: " + fontName;
+            return;
+        }
+        ext = fontUrl.split('.').pop().toLowerCase();
+        base64 = await fetchAsBase64(fontUrl);
+    } else if (googleFontSelect) {
+        fontName = googleFontSelect;
+        fontUrl = await getGoogleFontURL(fontName);
+        if (!fontUrl) {
+            output.value = "Could not fetch Google Font URL.";
+            return;
+        }
+        ext = fontUrl.split('.').pop().toLowerCase();
+        base64 = await fetchAsBase64(fontUrl);
+    } else if (customUrl) {
+        fontUrl = customUrl;
+        fontName = customUrl.split("/").pop().split(".")[0];
+        ext = fontUrl.split('.').pop().toLowerCase();
+        base64 = await fetchAsBase64(fontUrl);
+    } else {
+        output.value = "Please select or type a Google Font, enter a custom URL, or upload a font file.";
+        return;
+    }
+
+    const mimeMap = {
+        woff2: "font/woff2",
+        woff: "font/woff",
+        ttf: "font/ttf",
+        otf: "font/otf"
+    };
+
+    const formatMap = {
+        woff2: "woff2",
+        woff: "woff",
+        ttf: "truetype",
+        otf: "opentype"
+    };
+
+    const mime = mimeMap[ext] || "application/octet-stream";
+    const format = formatMap[ext] || ext;
+
+    const styleBlock =
+`<style>
+@font-face {
+    font-family: '${fontName}';
+    src: url("data:${mime};base64,${base64}") format('${format}');
+    font-style: normal;
+    font-weight: 400;
+}
+</style>`;
+
+    output.value = styleBlock;
+};
+</script>
+
+</body>
+</html>
